@@ -20,6 +20,18 @@ word_mappings:
       specifications.software.os: "SoftwareOS"
       project.timeline.start_date: "ProjectStartDate"
       project.timeline.end_date: "ProjectEndDate"
+  # 加密文件測試模板（請將加密後的 Word 檔案放在 templates/encrypted_customer_template.docx）
+  encrypted_template_test:
+    file_path: "templates/encrypted_customer_template.docx"
+    mappings:
+      product.name: "ProductName"
+      product.version: "ProductVersion"
+      product.description: "ProductDescription"
+      specifications.hardware.cpu: "HardwareCPU"
+      specifications.hardware.memory: "HardwareMemory"
+      specifications.software.os: "SoftwareOS"
+      project.timeline.start_date: "ProjectStartDate"
+      project.timeline.end_date: "ProjectEndDate"
 
 # Excel 文件對應  
 excel_mappings:
