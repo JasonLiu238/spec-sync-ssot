@@ -107,3 +107,37 @@ Thumbs.db
 
 # Office 暫存檔案
 ~$*
+
+# Node.js / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
+
+# Web UI 建置檔案
+/web-ui/frontend/dist/
+/web-ui/frontend/.vite/
+/web-ui/frontend/.temp/
+
+# Web UI 環境檔案
+/web-ui/frontend/.env.local
+/web-ui/frontend/.env.*.local
+
+# Python 虛擬環境 (如果在專案內建立)
+/venv/
+/.venv/
+
+# 歷史版本資料夾 (版本控制功能)
+/history/
+
+# 產生歷史記錄
+/output/generation_history.json
+
+# IDE 設定
+.idea/
+*.swp
+*.swo
+*~
