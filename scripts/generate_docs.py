@@ -144,9 +144,37 @@ class SpecSyncEngine:
             if win32com is None:
                 return False
             try:
-                word = win32com.Dispatch("Word.Application")
+                # 嘗試多種可能的 COM ProgID（Microsoft Word / Kingsoft WPS）
+                prog_ids = ["Word.Application", "kwps.Application", "wps.Application"]
+                word = None
+                for pid in prog_ids:
+                    try:
+                        word = win32com.Dispatch(pid)
+                        logger.info(f"使用 COM 程式：{pid}")
+                        break
+                    except Exception as _e:
+                        continue
+                if word is None:
+                    logger.error("找不到可用的 Word/WPS COM 介面")
+                    return False
                 word.Visible = False
-                doc = word.Documents.Open(str(template_path))
+                # 嘗試不同開啟參數（有些受保護/IRM/WPS 需只讀模式）
+                open_attempts = [
+                    dict(Path=str(template_path)),
+                    dict(Path=str(template_path), ReadOnly=True),
+                    dict(Path=str(template_path), ReadOnly=True, AddToRecentFiles=False),
+                ]
+                doc = None
+                for args in open_attempts:
+                    try:
+                        doc = word.Documents.Open(**args)
+                        break
+                    except Exception as oe:
+                        logger.debug(f"開啟文件失敗（嘗試參數 {args}）：{oe}")
+                        continue
+                if doc is None:
+                    logger.error("無法開啟加密或受保護的文件，請確認權限/是否允許自動化。")
+                    return False
                 # 嘗試書籤填入；若無則使用尋找取代
                 for ssot_field, name in mapping.items():
                     value = self.get_nested_value(ssot_data, ssot_field)

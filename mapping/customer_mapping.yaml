@@ -22,7 +22,7 @@ word_mappings:
       project.timeline.end_date: "ProjectEndDate"
   # 加密文件測試模板（請將加密後的 Word 檔案放在 templates/encrypted_customer_template.docx）
   encrypted_template_test:
-    file_path: "templates/encrypted_customer_template.docx"
+    file_path: "templates/HP Tim樣機標籤.docx"
     mappings:
       product.name: "ProductName"
       product.version: "ProductVersion"

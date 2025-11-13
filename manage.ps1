@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory=$true)]
     [ValidateSet("setup", "install", "generate", "validate", "test", "lint", "format", "clean", "clean-output", "workflow", "dev-install", "status", "help")]
-    [string]$Command
+    [string]$Command,
     [ValidateSet("auto", "pure", "office")]
     [string]$Engine = "auto"
 )
