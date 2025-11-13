@@ -1,25 +1,21 @@
-# Spec-Sync SSOT - Web UI 後端依賴
-# Python 3.11+
+# Spec-Sync SSOT - Web UI Backend Dependencies
+# Python 3.8+
 
-# Web 框架
+# Web Framework
 Flask==3.0.0
 Flask-CORS==4.0.0
 Flask-SocketIO==5.3.5
 python-socketio==5.10.0
 python-engineio==4.8.0
 
-# 任務排程
+# Task Scheduling
 APScheduler==3.10.4
 
-# WebSocket 支援
-gevent==23.9.1
-gevent-websocket==0.10.1
-
-# 已有的依賴 (從 requirements.txt 繼承)
+# Inherited dependencies (from root requirements.txt)
 pyyaml>=6.0
 python-docx>=0.8.11
 openpyxl>=3.0.10
 pywin32>=306
 
-# 工具
+# Utilities
 python-dotenv==1.0.0

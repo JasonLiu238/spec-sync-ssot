@@ -8,6 +8,9 @@ Write-Host ""
 
 $projectRoot = $PSScriptRoot
 
+# Refresh environment variables (important after Node.js installation)
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
 # Check Python
 Write-Host "[*] Checking Python..." -ForegroundColor Yellow
 python --version
@@ -74,7 +77,7 @@ Start-Sleep -Seconds 3
 
 # Check if backend started successfully
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:5000/api/status" -TimeoutSec 5 -ErrorAction Stop
+    $null = Invoke-WebRequest -Uri "http://localhost:5000/api/status" -TimeoutSec 5 -ErrorAction Stop
     Write-Host "[+] Backend started successfully" -ForegroundColor Green
 } catch {
     Write-Host "[!] Backend failed to start" -ForegroundColor Red

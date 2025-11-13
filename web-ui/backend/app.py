@@ -1,6 +1,6 @@
 """
 Spec-Sync SSOT - Flask API Server
-提供 RESTful API 供前端調用
+RESTful API for frontend
 """
 
 from flask import Flask, jsonify, request, send_file
@@ -10,38 +10,35 @@ import os
 import sys
 import yaml
 import json
+import subprocess
 from datetime import datetime
 from pathlib import Path
 import logging
 
-# 加入專案根目錄到 Python 路徑
+# Add project root to Python path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# 導入現有模組
-from scripts.generate_docs import DocumentGenerator
-from scripts.validate_consistency import ConsistencyValidator
-
-# 設定日誌
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# 初始化 Flask
+# Initialize Flask
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'spec-sync-ssot-secret-key-2025'
-CORS(app)  # 啟用 CORS
+CORS(app)  # Enable CORS
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# 設定路徑
+# Setup paths
 SSOT_DIR = project_root / 'ssot'
 MAPPING_DIR = project_root / 'mapping'
 TEMPLATES_DIR = project_root / 'templates'
 OUTPUT_DIR = project_root / 'output'
 
-# 確保目錄存在
+# Ensure directories exist
 for dir_path in [SSOT_DIR, MAPPING_DIR, TEMPLATES_DIR, OUTPUT_DIR]:
     dir_path.mkdir(exist_ok=True)
 
@@ -252,61 +249,81 @@ def upload_template():
 
 @app.route('/api/generate', methods=['POST'])
 def generate_documents():
-    """產生文件"""
+    """Generate documents"""
     try:
         config = request.get_json()
         engine = config.get('engine', 'auto')  # auto, pure, office
-        templates = config.get('templates', [])  # 要產生的模板列表
+        templates = config.get('templates', [])  # List of templates to generate
         
-        # 設定環境變數
+        # Set environment variable
         os.environ['SPEC_SYNC_ENGINE'] = engine
         
-        # 發送開始事件
+        # Send start event
         socketio.emit('generate_start', {
             'timestamp': datetime.now().isoformat(),
             'templates': templates
         })
         
-        # 執行產生
-        generator = DocumentGenerator()
+        # Execute generation using existing script
         results = []
+        script_path = project_root / 'scripts' / 'generate_docs.py'
         
-        for template_name in templates:
-            try:
-                socketio.emit('generate_progress', {
-                    'template': template_name,
-                    'status': 'processing'
-                })
-                
-                # 這裡簡化處理,實際應整合 generate_docs.py
-                output_file = generator.generate_single_template(template_name)
-                
+        try:
+            # Call the existing script
+            result = subprocess.run(
+                [sys.executable, str(script_path)],
+                cwd=str(project_root),
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            
+            if result.returncode == 0:
+                # Success - find generated files in output directory
+                for template in templates:
+                    output_file = f"filled_{template}"
+                    if (OUTPUT_DIR / output_file).exists():
+                        results.append({
+                            'template': template,
+                            'status': 'success',
+                            'output': output_file
+                        })
+                        socketio.emit('generate_progress', {
+                            'template': template,
+                            'status': 'success',
+                            'output': output_file
+                        })
+                    else:
+                        results.append({
+                            'template': template,
+                            'status': 'error',
+                            'error': 'Output file not found'
+                        })
+            else:
+                # Error occurred
+                error_msg = result.stderr or result.stdout
+                for template in templates:
+                    results.append({
+                        'template': template,
+                        'status': 'error',
+                        'error': error_msg
+                    })
+                    socketio.emit('generate_progress', {
+                        'template': template,
+                        'status': 'error',
+                        'error': error_msg
+                    })
+        
+        except subprocess.TimeoutExpired:
+            error_msg = 'Generation timeout (5 minutes)'
+            for template in templates:
                 results.append({
-                    'template': template_name,
-                    'status': 'success',
-                    'output': output_file
-                })
-                
-                socketio.emit('generate_progress', {
-                    'template': template_name,
-                    'status': 'success',
-                    'output': output_file
-                })
-                
-            except Exception as e:
-                results.append({
-                    'template': template_name,
+                    'template': template,
                     'status': 'error',
-                    'error': str(e)
-                })
-                
-                socketio.emit('generate_progress', {
-                    'template': template_name,
-                    'status': 'error',
-                    'error': str(e)
+                    'error': error_msg
                 })
         
-        # 發送完成事件
+        # Send complete event
         socketio.emit('generate_complete', {
             'timestamp': datetime.now().isoformat(),
             'results': results
@@ -318,7 +335,7 @@ def generate_documents():
         })
         
     except Exception as e:
-        logger.error(f"產生文件失敗: {str(e)}")
+        logger.error(f"Generate failed: {str(e)}")
         socketio.emit('generate_error', {
             'timestamp': datetime.now().isoformat(),
             'error': str(e)
@@ -328,20 +345,37 @@ def generate_documents():
 
 @app.route('/api/validate', methods=['POST'])
 def validate_documents():
-    """驗證文件一致性"""
+    """Validate document consistency"""
     try:
         config = request.get_json()
         engine = config.get('engine', 'auto')
         
         os.environ['SPEC_SYNC_ENGINE'] = engine
         
-        validator = ConsistencyValidator()
-        results = validator.validate_all()
+        # Call existing validation script
+        script_path = project_root / 'scripts' / 'validate_consistency.py'
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
         
-        return jsonify({
-            'success': True,
-            'results': results
-        })
+        if result.returncode == 0:
+            return jsonify({
+                'success': True,
+                'output': result.stdout,
+                'message': 'Validation completed'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.stderr or result.stdout
+            }), 400
+            
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Validation timeout'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
