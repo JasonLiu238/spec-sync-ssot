@@ -1,0 +1,22 @@
+# Python 套件需求清單
+# 用於 SSOT 文件處理系統
+
+# 核心套件
+pyyaml>=6.0        # YAML 檔案處理
+openpyxl>=3.0.10   # Excel 檔案讀寫
+python-docx>=0.8.11 # Word 文件處理
+
+# 開發與測試工具
+pytest>=7.0.0      # 單元測試框架
+black>=22.0.0      # 程式碼格式化
+isort>=5.10.0      # import 排序
+flake8>=4.0.0      # 程式碼檢查
+
+# 日期時間處理
+python-dateutil>=2.8.0
+
+# 型別檢查 (選擇性)
+mypy>=0.950
+
+# 日誌與除錯
+coloredlogs>=15.0

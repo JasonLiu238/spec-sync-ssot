@@ -1,0 +1,89 @@
+name: Spec Sync SSOT - CI/CD 驗證
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-consistency:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: 設定 Python 環境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: 安裝相依套件
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyyaml python-docx openpyxl
+        
+    - name: 執行單元測試
+      run: |
+        python -m pytest tests/ -v
+        
+    - name: 產生文件
+      run: |
+        python scripts/generate_docs.py
+        
+    - name: 驗證文件一致性
+      run: |
+        python scripts/validate_consistency.py
+        
+    - name: 上傳輸出文件作為 Artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: generated-documents
+        path: output/
+        
+    - name: 檢查 SSOT 檔案變更
+      run: |
+        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "ssot/"; then
+          echo "⚠️  SSOT 檔案有變更，請確認所有相關文件已更新"
+        fi
+        
+  security-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: 執行安全掃描
+      run: |
+        # 檢查是否有敏感資訊
+        if grep -r "password\|secret\|key\|token" --exclude-dir=.git --exclude="*.md" .; then
+          echo "❌ 發現可能的敏感資訊"
+          exit 1
+        fi
+        
+  lint-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: 設定 Python 環境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: 安裝 Linting 工具
+      run: |
+        pip install flake8 black isort
+        
+    - name: 檢查程式碼格式
+      run: |
+        black --check scripts/
+        isort --check-only scripts/
+        flake8 scripts/
+        
+    - name: 驗證 YAML 格式
+      run: |
+        python -c "import yaml; yaml.safe_load(open('ssot/master.yaml'))"
+        python -c "import yaml; yaml.safe_load(open('mapping/customer_mapping.yaml'))"

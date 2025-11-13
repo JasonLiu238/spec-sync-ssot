@@ -1,0 +1,68 @@
+# Single Source of Truth (SSOT) - 主檔案
+# 所有產品規格的唯一真實來源
+
+version: "1.0.0"
+last_updated: "2025-11-13"
+
+# 產品基本資訊
+product:
+  name: ""
+  version: ""
+  description: ""
+  category: ""
+
+# 技術規格
+specifications:
+  # 硬體規格
+  hardware:
+    cpu: ""
+    memory: ""
+    storage: ""
+    network: ""
+    
+  # 軟體規格  
+  software:
+    os: ""
+    framework: ""
+    dependencies: []
+    
+  # 功能需求
+  functional_requirements:
+    - requirement_id: "FR001"
+      title: ""
+      description: ""
+      priority: "high"
+      status: "pending"
+      
+  # 非功能需求
+  non_functional_requirements:
+    performance: ""
+    security: ""
+    scalability: ""
+    availability: ""
+
+# 客戶特定需求
+customer_specific:
+  deployment_environment: ""
+  integration_points: []
+  custom_configurations: {}
+  
+# 測試相關
+testing:
+  test_cases: []
+  acceptance_criteria: []
+  
+# 專案資訊
+project:
+  team_members: []
+  timeline:
+    start_date: ""
+    end_date: ""
+    milestones: []
+  budget: ""
+  
+# 風險與限制
+risks_and_constraints:
+  technical_risks: []
+  business_risks: []
+  constraints: []

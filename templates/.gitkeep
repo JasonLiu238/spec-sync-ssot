@@ -1,0 +1,55 @@
+# 範例客戶模板檔案清單
+# 
+# 此檔案說明如何建立客戶模板的書籤和欄位
+
+## Word 模板範例
+
+如需建立 Word 模板範例，請：
+
+1. 開啟 Microsoft Word
+2. 建立新文件，包含以下內容：
+
+```
+產品規格文件
+
+產品名稱：{ProductName}
+產品版本：{ProductVersion}
+產品描述：{ProductDescription}
+
+技術規格
+========
+CPU：{HardwareCPU}
+記憶體：{HardwareMemory}
+作業系統：{SoftwareOS}
+
+專案資訊
+========
+開始日期：{ProjectStartDate}
+結束日期：{ProjectEndDate}
+```
+
+3. 儲存為 `example_customer_spec.docx`
+
+## Excel 模板範例
+
+如需建立 Excel 模板範例，請：
+
+1. 開啟 Microsoft Excel
+2. 在工作表「規格表」中設定：
+
+| A欄     | B欄 (資料欄位)     |
+|---------|-------------------|
+| 產品名稱 | (B2 儲存格)      |
+| 產品版本 | (B3 儲存格)      |
+| CPU規格  | (B5 儲存格)      |
+| 記憶體   | (B6 儲存格)      |
+| 作業系統 | (B8 儲存格)      |
+| 預算     | (B10 儲存格)     |
+
+3. 儲存為 `example_customer_spec.xlsx`
+
+## 注意事項
+
+- 實際客戶模板請勿提交到版本控制
+- 僅保留去除敏感資料的範例檔案
+- 書籤名稱需與 `mapping/customer_mapping.yaml` 中的設定一致

@@ -1,0 +1,55 @@
+# 客戶模板欄位對應表
+# 將 SSOT 欄位對應到客戶文件中的特定位置
+
+# 對應表版本
+mapping_version: "1.0.0"
+last_updated: "2025-11-13"
+
+# Word 文件對應
+word_mappings:
+  # 客戶模板文件名稱
+  customer_template_1:
+    file_path: "templates/customer_template_1.docx"
+    mappings:
+      # SSOT欄位 -> Word書籤/欄位
+      product.name: "ProductName"
+      product.version: "ProductVersion" 
+      product.description: "ProductDescription"
+      specifications.hardware.cpu: "HardwareCPU"
+      specifications.hardware.memory: "HardwareMemory"
+      specifications.software.os: "SoftwareOS"
+      project.timeline.start_date: "ProjectStartDate"
+      project.timeline.end_date: "ProjectEndDate"
+
+# Excel 文件對應  
+excel_mappings:
+  customer_excel_1:
+    file_path: "templates/customer_excel_1.xlsx"
+    sheet_name: "規格表"
+    mappings:
+      # SSOT欄位 -> Excel座標
+      product.name: "B2"
+      product.version: "B3"
+      specifications.hardware.cpu: "B5"
+      specifications.hardware.memory: "B6"
+      specifications.software.os: "B8"
+      project.budget: "B10"
+
+# 欄位驗證規則
+validation_rules:
+  product.version:
+    type: "string"
+    pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"  # 版本號格式
+    
+  project.timeline.start_date:
+    type: "date"
+    format: "YYYY-MM-DD"
+    
+  project.budget:
+    type: "number"
+    minimum: 0
+    
+# 預設值設定
+default_values:
+  project.timeline.start_date: "2025-01-01"
+  specifications.software.os: "Windows 11"
