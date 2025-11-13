@@ -6,25 +6,25 @@ last_updated: "2025-11-13"
 
 # 產品基本資訊
 product:
-  name: ""
-  version: ""
-  description: ""
-  category: ""
+  name: "HP Tim 樣機"
+  version: "v1.0.0"
+  description: "HP Tim 樣機標籤測試文件"
+  category: "硬體標籤"
 
 # 技術規格
 specifications:
   # 硬體規格
   hardware:
-    cpu: ""
-    memory: ""
-    storage: ""
-    network: ""
+    cpu: "Intel Core i7-1165G7"
+    memory: "16GB DDR4"
+    storage: "512GB NVMe SSD"
+    network: "Intel Wi-Fi 6 AX201"
     
   # 軟體規格  
   software:
-    os: ""
-    framework: ""
-    dependencies: []
+    os: "Windows 11 Pro"
+    framework: ".NET 6.0"
+    dependencies: ["Office 2021", "WPS Office"]
     
   # 功能需求
   functional_requirements:
@@ -54,12 +54,12 @@ testing:
   
 # 專案資訊
 project:
-  team_members: []
+  team_members: ["測試團隊"]
   timeline:
-    start_date: ""
-    end_date: ""
+    start_date: "2025-11-01"
+    end_date: "2025-12-31"
     milestones: []
-  budget: ""
+  budget: "100000"
   
 # 風險與限制
 risks_and_constraints:

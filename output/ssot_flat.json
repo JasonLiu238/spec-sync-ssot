@@ -1,0 +1,10 @@
+{
+  "ProductName": "HP Tim 樣機",
+  "ProductVersion": "v1.0.0",
+  "ProductDescription": "HP Tim 樣機標籤測試文件",
+  "HardwareCPU": "Intel Core i7-1165G7",
+  "HardwareMemory": "16GB DDR4",
+  "SoftwareOS": "Windows 11 Pro",
+  "ProjectStartDate": "2025-11-01",
+  "ProjectEndDate": "2025-12-31"
+}

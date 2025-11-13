@@ -50,9 +50,12 @@ CI/CD Consistency Check
       - 驗證文件：`./manage.ps1 validate -Engine office`
 - 預設為 auto（先嘗試純 Python，不行再 fallback 至 Office）。
 
-其他替代方案（需 IT/資安政策允許）：
-- 使用 Microsoft Purview/AIP 的 PowerShell 命令（如 Set-AIPFileLabel）在流程中「暫時移除/降級標籤」，產製後再「回設標籤」。
-- 於未套用自動標籤的受控資料夾/容器（WSL/Linux Volume）進行產製，再回傳至受保護環境。
+**若 COM 自動化仍無法開啟加密文件**，請參考：📖 [加密文件處理完整指南](docs/ENCRYPTED_FILES_GUIDE.md)
+
+提供的替代方案包括：
+1. **VBA 巨集工作流程**（推薦）：透過 JSON 匯出 + Word 內建巨集填值
+2. 暫時移除/降級敏感性標籤（需 IT 政策允許，使用 Set-AIPFileLabel）
+3. 使用未加密的工作區進行產製（WSL/Linux Volume 或豁免資料夾）
 
 �📂 目錄結構（Proposed Folder Structure）
 /spec-sync-ssot
