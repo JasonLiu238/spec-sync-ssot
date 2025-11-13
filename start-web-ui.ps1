@@ -1,65 +1,68 @@
-# Spec-Sync SSOT Web UI - 啟動腳本
-# 一鍵啟動前後端服務
+# Spec-Sync SSOT Web UI - Startup Script
+# One-click startup for frontend and backend services
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " Spec-Sync SSOT Web UI 啟動中..." -ForegroundColor Cyan
+Write-Host " Spec-Sync SSOT Web UI Starting..." -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 $projectRoot = $PSScriptRoot
 
-# 檢查 Python
-Write-Host "🔍 檢查 Python..." -ForegroundColor Yellow
+# Check Python
+Write-Host "[*] Checking Python..." -ForegroundColor Yellow
 python --version
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Python 未安裝或不在 PATH 中" -ForegroundColor Red
+    Write-Host "[!] Python not found in PATH" -ForegroundColor Red
+    Write-Host "    Please install Python 3.8+ from https://www.python.org/" -ForegroundColor Yellow
     exit 1
 }
 
-# 檢查 Node.js
-Write-Host "🔍 檢查 Node.js..." -ForegroundColor Yellow
+# Check Node.js
+Write-Host "[*] Checking Node.js..." -ForegroundColor Yellow
 node --version
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Node.js 未安裝或不在 PATH 中" -ForegroundColor Red
+    Write-Host "[!] Node.js not found in PATH" -ForegroundColor Red
+    Write-Host "    Please restart PowerShell or check installation" -ForegroundColor Yellow
+    Write-Host "    If just installed, close and reopen PowerShell" -ForegroundColor Yellow
     exit 1
 }
 
 Write-Host ""
 
-# 檢查後端依賴
-Write-Host "📦 檢查後端依賴..." -ForegroundColor Yellow
+# Check backend dependencies
+Write-Host "[*] Checking backend dependencies..." -ForegroundColor Yellow
 $backendReq = Join-Path $projectRoot "web-ui\backend\requirements.txt"
 if (Test-Path $backendReq) {
-    pip list | Select-String "Flask" | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "⚠️  後端依賴未安裝,正在安裝..." -ForegroundColor Yellow
+    $flaskInstalled = pip list | Select-String "Flask"
+    if (-not $flaskInstalled) {
+        Write-Host "[*] Installing backend dependencies..." -ForegroundColor Yellow
         pip install -r $backendReq
     } else {
-        Write-Host "✅ 後端依賴已安裝" -ForegroundColor Green
+        Write-Host "[+] Backend dependencies OK" -ForegroundColor Green
     }
 }
 
-# 檢查前端依賴
-Write-Host "📦 檢查前端依賴..." -ForegroundColor Yellow
+# Check frontend dependencies
+Write-Host "[*] Checking frontend dependencies..." -ForegroundColor Yellow
 $frontendDir = Join-Path $projectRoot "web-ui\frontend"
 $nodeModules = Join-Path $frontendDir "node_modules"
 if (-not (Test-Path $nodeModules)) {
-    Write-Host "⚠️  前端依賴未安裝,正在安裝..." -ForegroundColor Yellow
+    Write-Host "[*] Installing frontend dependencies (this may take a few minutes)..." -ForegroundColor Yellow
     Push-Location $frontendDir
     npm install
     Pop-Location
 } else {
-    Write-Host "✅ 前端依賴已安裝" -ForegroundColor Green
+    Write-Host "[+] Frontend dependencies OK" -ForegroundColor Green
 }
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " 啟動服務" -ForegroundColor Cyan
+Write-Host " Starting Services" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 啟動後端 (背景執行)
-Write-Host "🚀 啟動後端 API 伺服器 (port 5000)..." -ForegroundColor Green
+# Start backend (background)
+Write-Host "[*] Starting backend API server (port 5000)..." -ForegroundColor Green
 $backendScript = Join-Path $projectRoot "web-ui\backend\app.py"
 $backendJob = Start-Job -ScriptBlock {
     param($scriptPath, $projectRoot)
@@ -69,12 +72,13 @@ $backendJob = Start-Job -ScriptBlock {
 
 Start-Sleep -Seconds 3
 
-# 檢查後端是否啟動成功
+# Check if backend started successfully
 try {
     $response = Invoke-WebRequest -Uri "http://localhost:5000/api/status" -TimeoutSec 5 -ErrorAction Stop
-    Write-Host "✅ 後端啟動成功" -ForegroundColor Green
+    Write-Host "[+] Backend started successfully" -ForegroundColor Green
 } catch {
-    Write-Host "❌ 後端啟動失敗,請檢查日誌" -ForegroundColor Red
+    Write-Host "[!] Backend failed to start" -ForegroundColor Red
+    Write-Host "    Check the logs above for errors" -ForegroundColor Yellow
     Stop-Job $backendJob
     Remove-Job $backendJob
     exit 1
@@ -82,17 +86,17 @@ try {
 
 Write-Host ""
 
-# 啟動前端 (前景執行)
-Write-Host "🚀 啟動前端開發伺服器 (port 3000)..." -ForegroundColor Green
+# Start frontend (foreground)
+Write-Host "[*] Starting frontend dev server (port 3000)..." -ForegroundColor Green
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " 服務已啟動" -ForegroundColor Cyan
+Write-Host " Services Running" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "📱 前端: http://localhost:3000" -ForegroundColor Green
-Write-Host "🔌 後端: http://localhost:5000" -ForegroundColor Green
+Write-Host "Frontend: http://localhost:3000" -ForegroundColor Green
+Write-Host "Backend:  http://localhost:5000" -ForegroundColor Green
 Write-Host ""
-Write-Host "按 Ctrl+C 停止服務" -ForegroundColor Yellow
+Write-Host "Press Ctrl+C to stop all services" -ForegroundColor Yellow
 Write-Host ""
 
 Push-Location $frontendDir
@@ -101,10 +105,10 @@ try {
 } finally {
     Pop-Location
     
-    # 清理後端 Job
+    # Cleanup backend job
     Write-Host ""
-    Write-Host "🛑 停止後端伺服器..." -ForegroundColor Yellow
+    Write-Host "[*] Stopping backend server..." -ForegroundColor Yellow
     Stop-Job $backendJob
     Remove-Job $backendJob
-    Write-Host "✅ 服務已停止" -ForegroundColor Green
+    Write-Host "[+] All services stopped" -ForegroundColor Green
 }
