@@ -1,0 +1,25 @@
+# Web UI 開發檔案
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 環境變數
+.env
+.env.local
