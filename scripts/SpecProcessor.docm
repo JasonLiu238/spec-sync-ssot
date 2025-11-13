@@ -1,0 +1,17 @@
+This is a placeholder - the actual .docm file needs to be created in Word with the VBA macro embedded.
+
+Instructions for creating SpecProcessor.docm:
+
+1. Open Microsoft Word
+2. Create a new document
+3. Save as "Word Macro-Enabled Document (.docm)" with name "SpecProcessor.docm"
+4. Press Alt+F11 to open VBA Editor
+5. Insert > Module
+6. Copy the code from FillSpecFromJson_External.vba (created next)
+7. Save and close
+
+This external processor will:
+- Open the customer template (read-only protected)
+- Read data from ssot_flat.json
+- Fill the template bookmarks/tokens
+- Save to output directory
