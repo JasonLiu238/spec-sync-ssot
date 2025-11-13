@@ -40,7 +40,21 @@ Output Customer Docs (格式不變)
          ↓
 CI/CD Consistency Check
 
-📂 目錄結構（Proposed Folder Structure）
+� 加密/敏感性標籤（Encryption & Sensitivity Labels）
+
+若企業裝置在儲存 Word/Excel 後會自動加密（如 Microsoft Purview/AIP IRM、敏感性標籤）：
+
+- 本專案提供「Office 模式」以驅動 Word/Excel 來填寫（COM 自動化），在您具備存取權限時可直接處理受保護文件。
+- 執行方式：
+      - 產生文件：`./manage.ps1 generate -Engine office`
+      - 驗證文件：`./manage.ps1 validate -Engine office`
+- 預設為 auto（先嘗試純 Python，不行再 fallback 至 Office）。
+
+其他替代方案（需 IT/資安政策允許）：
+- 使用 Microsoft Purview/AIP 的 PowerShell 命令（如 Set-AIPFileLabel）在流程中「暫時移除/降級標籤」，產製後再「回設標籤」。
+- 於未套用自動標籤的受控資料夾/容器（WSL/Linux Volume）進行產製，再回傳至受保護環境。
+
+�📂 目錄結構（Proposed Folder Structure）
 /spec-sync-ssot
 │── ssot/                # 單一真實來源（JSON/Excel）
 │── templates/           # 客戶提供的 Word/Excel 模板（不可修改外觀）

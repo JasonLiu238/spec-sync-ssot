@@ -2,6 +2,12 @@
 """
 Spec Sync SSOT - 文件自動產生引擎
 從 SSOT 資料自動填寫客戶 Word 和 Excel 模板
+
+支援兩種模式：
+1) 純 Python（python-docx / openpyxl）
+2) Office COM 自動化（win32com）→ 可處理受敏感性標籤/IRM 保護的文件（需權限）
+
+以環境變數 SPEC_SYNC_ENGINE 控制：auto | pure | office（預設 auto）
 """
 
 import os
@@ -11,17 +17,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List
-
-# 第三方套件 (需要安裝)
-try:
-    from docx import Document
-    import openpyxl
-    from openpyxl import load_workbook
-except ImportError as e:
-    print(f"請安裝必要套件: pip install python-docx openpyxl")
-    print(f"錯誤: {e}")
-    sys.exit(1)
+from typing import Dict, Any
 
 # 設定日誌
 logging.basicConfig(
@@ -29,6 +25,29 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def _import_python_doc_libs():
+    """延遲載入 python-docx 與 openpyxl。"""
+    try:
+        from docx import Document  # type: ignore
+    except Exception as e:
+        Document = None  # type: ignore
+        logger.debug(f"python-docx 載入失敗: {e}")
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except Exception as e:
+        load_workbook = None  # type: ignore
+        logger.debug(f"openpyxl 載入失敗: {e}")
+    return Document, load_workbook
+
+def _import_office_com():
+    """延遲載入 win32com。"""
+    try:
+        import win32com.client  # type: ignore
+        return win32com.client
+    except Exception as e:
+        logger.debug(f"win32com 載入失敗: {e}")
+        return None
 
 class SpecSyncEngine:
     """規格同步引擎"""
@@ -83,82 +102,162 @@ class SpecSyncEngine:
     
     def fill_word_template(self, template_file: str, mapping: Dict[str, str], 
                           ssot_data: Dict[str, Any], output_file: str):
-        """填寫 Word 模板"""
+        """填寫 Word 模板（自動選擇引擎）。"""
+        engine_pref = os.getenv("SPEC_SYNC_ENGINE", "auto").lower()
         template_path = self.template_path / template_file
         output_path = self.output_path / output_file
-        
+
         if not template_path.exists():
             logger.error(f"Word 模板不存在: {template_path}")
             return False
-            
-        try:
-            # 載入 Word 文件
-            doc = Document(template_path)
-            
-            # 替換書籤/欄位
-            for ssot_field, word_bookmark in mapping.items():
-                value = self.get_nested_value(ssot_data, ssot_field)
-                if value is not None:
-                    # 在所有段落中搜尋並替換
+
+        Document, _ = _import_python_doc_libs()
+        win32com = _import_office_com() if engine_pref in ("auto", "office") else None
+
+        def _fill_with_python_docx() -> bool:
+            if Document is None:
+                return False
+            try:
+                doc = Document(str(template_path))
+                # 替換書籤/欄位（以 Token {Bookmark} 為主）
+                for ssot_field, word_bookmark in mapping.items():
+                    value = self.get_nested_value(ssot_data, ssot_field)
+                    if value is None:
+                        continue
+                    token = f"{{{word_bookmark}}}"
                     for paragraph in doc.paragraphs:
-                        if f"{{{word_bookmark}}}" in paragraph.text:
-                            paragraph.text = paragraph.text.replace(
-                                f"{{{word_bookmark}}}", str(value)
-                            )
-                    
-                    # 在表格中搜尋並替換
+                        if token in paragraph.text:
+                            paragraph.text = paragraph.text.replace(token, str(value))
                     for table in doc.tables:
                         for row in table.rows:
                             for cell in row.cells:
-                                if f"{{{word_bookmark}}}" in cell.text:
-                                    cell.text = cell.text.replace(
-                                        f"{{{word_bookmark}}}", str(value)
-                                    )
-            
-            # 儲存填寫完成的文件
-            doc.save(output_path)
-            logger.info(f"Word 文件已產生: {output_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"處理 Word 文件時發生錯誤: {e}")
-            return False
+                                if token in cell.text:
+                                    cell.text = cell.text.replace(token, str(value))
+                doc.save(str(output_path))
+                logger.info(f"Word 文件已產生: {output_path}")
+                return True
+            except Exception as e:
+                logger.warning(f"python-docx 處理失敗，將嘗試 Office 模式：{e}")
+                return False
+
+        def _fill_with_office_com() -> bool:
+            if win32com is None:
+                return False
+            try:
+                word = win32com.Dispatch("Word.Application")
+                word.Visible = False
+                doc = word.Documents.Open(str(template_path))
+                # 嘗試書籤填入；若無則使用尋找取代
+                for ssot_field, name in mapping.items():
+                    value = self.get_nested_value(ssot_data, ssot_field)
+                    if value is None:
+                        continue
+                    try:
+                        if doc.Bookmarks.Exists(name):
+                            doc.Bookmarks(name).Range.Text = str(value)
+                            continue
+                    except Exception:
+                        pass
+                    # Find/Replace token {Name} 於整份文件
+                    rng = doc.Content
+                    find = rng.Find
+                    find.ClearFormatting()
+                    find.Text = f"{{{name}}}"
+                    find.Replacement.ClearFormatting()
+                    find.Replacement.Text = str(value)
+                    find.Execute(Replace=2)  # wdReplaceAll
+                # 另存新檔為 .docx
+                wdFormatXMLDocument = 12
+                doc.SaveAs(str(output_path), FileFormat=wdFormatXMLDocument)
+                doc.Close(False)
+                word.Quit()
+                logger.info(f"Word 文件已產生（Office 模式）: {output_path}")
+                return True
+            except Exception as e:
+                logger.error(f"Office Word 自動化失敗：{e}")
+                try:
+                    # 嘗試確保應用程式關閉
+                    word.Quit()
+                except Exception:
+                    pass
+                return False
+
+        # 根據偏好選擇
+        if engine_pref == "pure":
+            return _fill_with_python_docx()
+        elif engine_pref == "office":
+            return _fill_with_office_com()
+        else:
+            return _fill_with_python_docx() or _fill_with_office_com()
     
     def fill_excel_template(self, template_file: str, sheet_name: str,
                            mapping: Dict[str, str], ssot_data: Dict[str, Any], 
                            output_file: str):
-        """填寫 Excel 模板"""
+        """填寫 Excel 模板（自動選擇引擎）。"""
+        engine_pref = os.getenv("SPEC_SYNC_ENGINE", "auto").lower()
         template_path = self.template_path / template_file
         output_path = self.output_path / output_file
-        
+
         if not template_path.exists():
             logger.error(f"Excel 模板不存在: {template_path}")
             return False
-            
-        try:
-            # 載入 Excel 檔案
-            workbook = load_workbook(template_path)
-            
-            if sheet_name not in workbook.sheetnames:
-                logger.error(f"工作表不存在: {sheet_name}")
+
+        _, load_workbook = _import_python_doc_libs()
+        win32com = _import_office_com() if engine_pref in ("auto", "office") else None
+
+        def _fill_with_openpyxl() -> bool:
+            if load_workbook is None:
                 return False
-                
-            sheet = workbook[sheet_name]
-            
-            # 填入資料
-            for ssot_field, excel_cell in mapping.items():
-                value = self.get_nested_value(ssot_data, ssot_field)
-                if value is not None:
-                    sheet[excel_cell] = value
-            
-            # 儲存檔案
-            workbook.save(output_path)
-            logger.info(f"Excel 文件已產生: {output_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"處理 Excel 文件時發生錯誤: {e}")
-            return False
+            try:
+                wb = load_workbook(str(template_path))
+                if sheet_name not in wb.sheetnames:
+                    logger.error(f"工作表不存在: {sheet_name}")
+                    return False
+                ws = wb[sheet_name]
+                for ssot_field, excel_cell in mapping.items():
+                    value = self.get_nested_value(ssot_data, ssot_field)
+                    if value is not None:
+                        ws[excel_cell] = value
+                wb.save(str(output_path))
+                logger.info(f"Excel 文件已產生: {output_path}")
+                return True
+            except Exception as e:
+                logger.warning(f"openpyxl 處理失敗，將嘗試 Office 模式：{e}")
+                return False
+
+        def _fill_with_office_com() -> bool:
+            if win32com is None:
+                return False
+            try:
+                excel = win32com.Dispatch("Excel.Application")
+                excel.Visible = False
+                wb = excel.Workbooks.Open(str(template_path))
+                ws = wb.Worksheets(sheet_name)
+                for ssot_field, excel_cell in mapping.items():
+                    value = self.get_nested_value(ssot_data, ssot_field)
+                    if value is not None:
+                        ws.Range(excel_cell).Value = value
+                # 另存新檔為 .xlsx
+                xlOpenXMLWorkbook = 51
+                wb.SaveAs(str(output_path), FileFormat=xlOpenXMLWorkbook)
+                wb.Close(SaveChanges=False)
+                excel.Quit()
+                logger.info(f"Excel 文件已產生（Office 模式）: {output_path}")
+                return True
+            except Exception as e:
+                logger.error(f"Office Excel 自動化失敗：{e}")
+                try:
+                    excel.Quit()
+                except Exception:
+                    pass
+                return False
+
+        if engine_pref == "pure":
+            return _fill_with_openpyxl()
+        elif engine_pref == "office":
+            return _fill_with_office_com()
+        else:
+            return _fill_with_openpyxl() or _fill_with_office_com()
     
     def generate_all_documents(self):
         """產生所有文件"""

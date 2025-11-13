@@ -4,7 +4,8 @@
 # 核心套件
 pyyaml>=6.0        # YAML 檔案處理
 openpyxl>=3.0.10   # Excel 檔案讀寫
-python-docx>=0.8.11 # Word 文件處理
+python-docx>=0.8.11 # Word 文件處理（純 Python 模式）
+pywin32>=306       # Windows COM 自動化（Office 模式）
 
 # 開發與測試工具
 pytest>=7.0.0      # 單元測試框架

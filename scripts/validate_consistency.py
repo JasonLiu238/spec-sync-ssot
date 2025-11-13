@@ -2,6 +2,8 @@
 """
 Spec Sync SSOT - 文件一致性驗證工具
 檢查輸出文件與 SSOT 是否一致
+
+支援純 Python 與 Office COM 兩種模式，與 generate_docs.py 相同。
 """
 
 import os
@@ -12,16 +14,29 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 
-try:
-    from docx import Document
-    import openpyxl
-    from openpyxl import load_workbook
-except ImportError as e:
-    print(f"請安裝必要套件: pip install python-docx openpyxl")
-    sys.exit(1)
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def _import_python_doc_libs():
+    try:
+        from docx import Document  # type: ignore
+    except Exception as e:
+        Document = None  # type: ignore
+        logger.debug(f"python-docx 載入失敗: {e}")
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except Exception as e:
+        load_workbook = None  # type: ignore
+        logger.debug(f"openpyxl 載入失敗: {e}")
+    return Document, load_workbook
+
+def _import_office_com():
+    try:
+        import win32com.client  # type: ignore
+        return win32com.client
+    except Exception as e:
+        logger.debug(f"win32com 載入失敗: {e}")
+        return None
 
 class ConsistencyValidator:
     """文件一致性驗證器"""
@@ -63,71 +78,117 @@ class ConsistencyValidator:
     
     def validate_word_document(self, doc_path: Path, mapping: Dict[str, str], 
                               ssot_data: Dict[str, Any]) -> List[str]:
-        """驗證 Word 文件一致性"""
-        errors = []
-        
+        """驗證 Word 文件一致性（自動選擇引擎）。"""
+        errors: List[str] = []
         if not doc_path.exists():
             return [f"Word 文件不存在: {doc_path}"]
-        
-        try:
-            doc = Document(doc_path)
-            doc_text = ""
-            
-            # 收集所有文字內容
-            for paragraph in doc.paragraphs:
-                doc_text += paragraph.text + "\n"
-            
-            for table in doc.tables:
-                for row in table.rows:
-                    for cell in row.cells:
-                        doc_text += cell.text + "\n"
-            
-            # 檢查每個對應欄位
-            for ssot_field, word_bookmark in mapping.items():
-                expected_value = self.get_nested_value(ssot_data, ssot_field)
-                if expected_value is not None:
-                    if str(expected_value) not in doc_text:
-                        errors.append(
-                            f"Word文件中找不到 {ssot_field} 的值: {expected_value}"
-                        )
-                        
-        except Exception as e:
-            errors.append(f"讀取 Word 文件時發生錯誤: {e}")
-        
+
+        engine_pref = os.getenv("SPEC_SYNC_ENGINE", "auto").lower()
+        Document, _ = _import_python_doc_libs()
+        win32com = _import_office_com() if engine_pref in ("auto", "office") else None
+
+        doc_text = None
+
+        # 試 Python 解析
+        if engine_pref in ("auto", "pure") and Document is not None:
+            try:
+                doc = Document(str(doc_path))
+                text = []
+                for p in doc.paragraphs:
+                    text.append(p.text)
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            text.append(cell.text)
+                doc_text = "\n".join(text)
+            except Exception as e:
+                logger.debug(f"python-docx 讀取失敗：{e}")
+
+        # COM 讀取全文
+        if doc_text is None and engine_pref in ("auto", "office") and win32com is not None:
+            try:
+                word = win32com.Dispatch("Word.Application")
+                word.Visible = False
+                doc = word.Documents.Open(str(doc_path))
+                doc_text = doc.Content.Text
+                doc.Close(False)
+                word.Quit()
+            except Exception as e:
+                logger.debug(f"Office Word 自動化讀取失敗：{e}")
+                try:
+                    word.Quit()
+                except Exception:
+                    pass
+
+        if doc_text is None:
+            return ["無法讀取 Word 文件內容（請確認權限或安裝必要套件）"]
+
+        # 檢查每個對應欄位
+        for ssot_field, _bookmark in mapping.items():
+            expected_value = self.get_nested_value(ssot_data, ssot_field)
+            if expected_value is None:
+                continue
+            if str(expected_value) not in doc_text:
+                errors.append(
+                    f"Word文件中找不到 {ssot_field} 的值: {expected_value}"
+                )
         return errors
     
     def validate_excel_document(self, excel_path: Path, sheet_name: str,
                                mapping: Dict[str, str], ssot_data: Dict[str, Any]) -> List[str]:
-        """驗證 Excel 文件一致性"""
-        errors = []
-        
+        """驗證 Excel 文件一致性（自動選擇引擎）。"""
+        errors: List[str] = []
         if not excel_path.exists():
             return [f"Excel 文件不存在: {excel_path}"]
-        
-        try:
-            workbook = load_workbook(excel_path)
-            
-            if sheet_name not in workbook.sheetnames:
-                return [f"工作表不存在: {sheet_name}"]
-                
-            sheet = workbook[sheet_name]
-            
-            # 檢查每個對應欄位
-            for ssot_field, excel_cell in mapping.items():
-                expected_value = self.get_nested_value(ssot_data, ssot_field)
-                if expected_value is not None:
-                    actual_value = sheet[excel_cell].value
-                    
-                    # 型別轉換比較
+
+        engine_pref = os.getenv("SPEC_SYNC_ENGINE", "auto").lower()
+        _, load_workbook = _import_python_doc_libs()
+        win32com = _import_office_com() if engine_pref in ("auto", "office") else None
+
+        used_openpyxl = False
+        if engine_pref in ("auto", "pure") and load_workbook is not None:
+            try:
+                wb = load_workbook(str(excel_path))
+                if sheet_name not in wb.sheetnames:
+                    return [f"工作表不存在: {sheet_name}"]
+                ws = wb[sheet_name]
+                for ssot_field, excel_cell in mapping.items():
+                    expected_value = self.get_nested_value(ssot_data, ssot_field)
+                    if expected_value is None:
+                        continue
+                    actual_value = ws[excel_cell].value
                     if str(actual_value) != str(expected_value):
                         errors.append(
-                            f"Excel {excel_cell} 儲存格不一致: "
-                            f"期望 '{expected_value}', 實際 '{actual_value}'"
+                            f"Excel {excel_cell} 儲存格不一致: 期望 '{expected_value}', 實際 '{actual_value}'"
                         )
-                        
-        except Exception as e:
-            errors.append(f"讀取 Excel 文件時發生錯誤: {e}")
-        
+                used_openpyxl = True
+            except Exception as e:
+                logger.debug(f"openpyxl 讀取失敗：{e}")
+
+        if not used_openpyxl and engine_pref in ("auto", "office") and win32com is not None:
+            try:
+                excel = win32com.Dispatch("Excel.Application")
+                excel.Visible = False
+                wb = excel.Workbooks.Open(str(excel_path))
+                ws = wb.Worksheets(sheet_name)
+                for ssot_field, excel_cell in mapping.items():
+                    expected_value = self.get_nested_value(ssot_data, ssot_field)
+                    if expected_value is None:
+                        continue
+                    actual_value = ws.Range(excel_cell).Value
+                    if str(actual_value) != str(expected_value):
+                        errors.append(
+                            f"Excel {excel_cell} 儲存格不一致: 期望 '{expected_value}', 實際 '{actual_value}'"
+                        )
+                wb.Close(SaveChanges=False)
+                excel.Quit()
+            except Exception as e:
+                errors.append(f"Office Excel 自動化讀取失敗：{e}")
+                try:
+                    excel.Quit()
+                except Exception:
+                    pass
+
         return errors
     
     def validate_all_documents(self) -> Tuple[bool, List[str]]:

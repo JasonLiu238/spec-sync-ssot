@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory=$true)]
     [ValidateSet("setup", "install", "generate", "validate", "test", "lint", "format", "clean", "clean-output", "workflow", "dev-install", "status", "help")]
     [string]$Command
+    [ValidateSet("auto", "pure", "office")]
+    [string]$Engine = "auto"
 )
 
 function Show-Help {
@@ -22,7 +24,8 @@ function Show-Help {
     Write-Host "status          - 檢查專案狀態"
     Write-Host "help            - 顯示此幫助資訊"
     Write-Host ""
-    Write-Host "使用範例: .\manage.ps1 generate" -ForegroundColor Yellow
+    Write-Host "使用範例: .\manage.ps1 generate -Engine office" -ForegroundColor Yellow
+    Write-Host "Engine 選項: auto(預設) | pure(純 Python) | office(Office COM，支援加密文件)" -ForegroundColor DarkGray
 }
 
 function Install-Dependencies {
@@ -34,6 +37,7 @@ function Install-Dependencies {
 
 function Generate-Documents {
     Write-Host "產生客戶文件..." -ForegroundColor Blue
+    $env:SPEC_SYNC_ENGINE = $Engine
     python scripts/generate_docs.py
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ 文件產生完成" -ForegroundColor Green
@@ -44,6 +48,7 @@ function Generate-Documents {
 
 function Validate-Consistency {
     Write-Host "驗證文件一致性..." -ForegroundColor Blue
+    $env:SPEC_SYNC_ENGINE = $Engine
     python scripts/validate_consistency.py
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ 驗證通過" -ForegroundColor Green
@@ -54,6 +59,7 @@ function Validate-Consistency {
 
 function Run-Tests {
     Write-Host "執行單元測試..." -ForegroundColor Blue
+    $env:SPEC_SYNC_ENGINE = $Engine
     python -m pytest tests/ -v
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ 測試通過" -ForegroundColor Green

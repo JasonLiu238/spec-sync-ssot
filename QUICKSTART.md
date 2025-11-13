@@ -62,16 +62,22 @@ word_mappings:
 
 將客戶提供的 Word/Excel 模板放到 `templates/` 目錄
 
-### 6. 產生文件
+### 6. 產生文件（若檔案會自動加密，改用 Office 模式）
 
 ```powershell
-.\manage.ps1 generate
+# 一般情況（自動判斷）
+.\\manage.ps1 generate
+
+# 若公司電腦儲存後會自動套用敏感性標籤/加密 → 使用 Office 模式
+.\\manage.ps1 generate -Engine office
 ```
 
 ### 7. 驗證一致性
 
 ```powershell
-.\manage.ps1 validate
+# 自動判斷或強制 Office 模式
+.\\manage.ps1 validate
+.\\manage.ps1 validate -Engine office
 ```
 
 ## 🔄 完整工作流程
@@ -120,6 +126,10 @@ A: 檢查以下項目：
 - Python 套件是否正確安裝
 - 模板檔案是否存在
 - 對應表設定是否正確
+
+若是公司自動加密造成：
+- 請以 Office 模式執行：`-Engine office`
+- 確認已登入有權限開啟該文件的公司帳號
 
 ### Q: 驗證失敗？
 A: 檢查：
