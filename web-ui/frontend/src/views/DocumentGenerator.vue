@@ -36,15 +36,37 @@
           </el-form-item>
 
           <el-form-item label="選擇模板">
-            <el-checkbox-group v-model="selectedTemplates">
-              <el-checkbox
-                v-for="template in templates"
-                :key="template.name"
-                :label="template.name"
+            <div class="template-section">
+              <el-checkbox-group v-model="selectedTemplates" class="template-list">
+                <el-checkbox
+                  v-for="template in templates"
+                  :key="template.name"
+                  :label="template.name"
+                >
+                  {{ template.name }} ({{ formatFileSize(template.size) }})
+                </el-checkbox>
+              </el-checkbox-group>
+              
+              <!-- 上傳模板按鈕 -->
+              <el-upload
+                ref="uploadRef"
+                action="http://localhost:5000/api/templates/upload"
+                :on-success="handleUploadSuccess"
+                :on-error="handleUploadError"
+                :before-upload="beforeUpload"
+                :show-file-list="false"
+                accept=".docx,.xlsx"
               >
-                {{ template.name }} ({{ formatFileSize(template.size) }})
-              </el-checkbox>
-            </el-checkbox-group>
+                <el-button type="success" :icon="Upload" size="small">
+                  上傳新模板
+                </el-button>
+              </el-upload>
+            </div>
+            <div class="form-tip">
+              <el-text size="small" type="info">
+                支援 Word (.docx) 和 Excel (.xlsx) 格式,檔案大小限制 50MB
+              </el-text>
+            </div>
           </el-form-item>
         </el-form>
 
@@ -131,6 +153,7 @@ import {
   VideoPlay,
   Download,
   View,
+  Upload,
   SuccessFilled,
   CircleCloseFilled,
   InfoFilled
@@ -138,6 +161,7 @@ import {
 import { useGeneratorStore } from '../stores/generator'
 
 const generatorStore = useGeneratorStore()
+const uploadRef = ref(null)
 
 const engineMode = ref('auto')
 const templates = ref([])
@@ -156,6 +180,37 @@ const loadTemplates = async () => {
   } catch (error) {
     ElMessage.error('載入模板失敗: ' + error.message)
   }
+}
+
+// 上傳前檢查
+const beforeUpload = (file) => {
+  const isDocOrExcel = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                       file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+                       file.name.endsWith('.docx') ||
+                       file.name.endsWith('.xlsx')
+  
+  const isLt50M = file.size / 1024 / 1024 < 50
+
+  if (!isDocOrExcel) {
+    ElMessage.error('只支援 .docx 和 .xlsx 格式!')
+    return false
+  }
+  if (!isLt50M) {
+    ElMessage.error('檔案大小不能超過 50MB!')
+    return false
+  }
+  return true
+}
+
+// 上傳成功
+const handleUploadSuccess = (response) => {
+  ElMessage.success('模板上傳成功!')
+  loadTemplates() // 重新載入模板列表
+}
+
+// 上傳失敗
+const handleUploadError = (error) => {
+  ElMessage.error('上傳失敗: ' + error.message)
 }
 
 // 產生文件
@@ -251,6 +306,19 @@ onMounted(() => {
 .progress-card,
 .results-card {
   margin-bottom: 20px;
+}
+
+.template-section {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.template-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .form-tip {

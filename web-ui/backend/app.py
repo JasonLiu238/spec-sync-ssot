@@ -14,6 +14,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 import logging
+import re
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent.parent
@@ -41,6 +42,123 @@ OUTPUT_DIR = project_root / 'output'
 # Ensure directories exist
 for dir_path in [SSOT_DIR, MAPPING_DIR, TEMPLATES_DIR, OUTPUT_DIR]:
     dir_path.mkdir(exist_ok=True)
+
+
+# ============================================================================
+# Helpers: SSOT access + Token scan/replace
+# ============================================================================
+
+def _load_ssot() -> dict:
+    ssot_file = SSOT_DIR / 'master.yaml'
+    if not ssot_file.exists():
+        raise FileNotFoundError('SSOT 檔案不存在')
+    with open(ssot_file, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f) or {}
+
+
+def _get_nested_value(data: dict, path: str):
+    cur = data
+    try:
+        for key in path.split('.'):
+            cur = cur[key]
+        return cur
+    except Exception:
+        return None
+
+
+_TOKEN_REGEX = re.compile(r"\{([A-Za-z0-9_.-]+)\}")
+
+
+def _scan_tokens_docx(path: Path) -> set[str]:
+    from docx import Document  # type: ignore
+    tokens: set[str] = set()
+    doc = Document(str(path))
+
+    def collect(paragraph):
+        text = paragraph.text or ''
+        for m in _TOKEN_REGEX.finditer(text):
+            tokens.add(m.group(1))
+
+    for p in doc.paragraphs:
+        collect(p)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    collect(p)
+    return tokens
+
+
+def _replace_tokens_docx(path: Path, out_path: Path, ssot: dict) -> dict:
+    from docx import Document  # type: ignore
+    missing: set[str] = set()
+    replaced: dict[str, str] = {}
+    doc = Document(str(path))
+
+    def replace(paragraph):
+        text = paragraph.text or ''
+        def repl(m):
+            key = m.group(1)
+            val = _get_nested_value(ssot, key)
+            if val is None:
+                missing.add(key)
+                return m.group(0)
+            s = str(val)
+            replaced[key] = s
+            return s
+        new_text = _TOKEN_REGEX.sub(repl, text)
+        if new_text != text:
+            paragraph.text = new_text
+
+    for p in doc.paragraphs:
+        replace(p)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    replace(p)
+
+    doc.save(str(out_path))
+    return {"missing": sorted(missing), "replaced": replaced}
+
+
+def _scan_tokens_xlsx(path: Path) -> set[str]:
+    from openpyxl import load_workbook  # type: ignore
+    tokens: set[str] = set()
+    wb = load_workbook(str(path), data_only=False)
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str):
+                    for m in _TOKEN_REGEX.finditer(cell.value):
+                        tokens.add(m.group(1))
+    return tokens
+
+
+def _replace_tokens_xlsx(path: Path, out_path: Path, ssot: dict) -> dict:
+    from openpyxl import load_workbook  # type: ignore
+    missing: set[str] = set()
+    replaced: dict[str, str] = {}
+    wb = load_workbook(str(path), data_only=False)
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str):
+                    original = cell.value
+                    def repl(m):
+                        key = m.group(1)
+                        val = _get_nested_value(ssot, key)
+                        if val is None:
+                            missing.add(key)
+                            return m.group(0)
+                        s = str(val)
+                        replaced[key] = s
+                        return s
+                    new_val = _TOKEN_REGEX.sub(repl, original)
+                    if new_val != original:
+                        cell.value = new_val
+    wb.save(str(out_path))
+    return {"missing": sorted(missing), "replaced": replaced}
 
 
 # ============================================================================
@@ -244,96 +362,207 @@ def upload_template():
 
 
 # ============================================================================
+# API: Token 掃描
+# ============================================================================
+
+@app.route('/api/templates/<path:filename>/scan', methods=['GET'])
+def scan_template_tokens(filename):
+    """掃描模板中的 Token，格式為 {path.to.value}
+    回傳 tokens 列表與計數
+    """
+    try:
+        file_path = TEMPLATES_DIR / filename
+        if not file_path.exists():
+            return jsonify({'error': '模板不存在'}), 404
+
+        ext = file_path.suffix.lower()
+        if ext == '.docx':
+            try:
+                tokens = sorted(_scan_tokens_docx(file_path))
+            except ImportError:
+                return jsonify({'error': '缺少套件 python-docx'}), 500
+        elif ext == '.xlsx':
+            try:
+                tokens = sorted(_scan_tokens_xlsx(file_path))
+            except ImportError:
+                return jsonify({'error': '缺少套件 openpyxl'}), 500
+        else:
+            return jsonify({'error': '不支援的檔案類型'}), 400
+
+        return jsonify({
+            'success': True,
+            'file': filename,
+            'count': len(tokens),
+            'tokens': tokens
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # API: 文件產生
 # ============================================================================
 
 @app.route('/api/generate', methods=['POST'])
 def generate_documents():
-    """Generate documents"""
+    """產生文件：Token 優先，必要時回退到舊版腳本"""
     try:
-        config = request.get_json()
-        engine = config.get('engine', 'auto')  # auto, pure, office
-        templates = config.get('templates', [])  # List of templates to generate
-        
-        # Set environment variable
+        config = request.get_json() or {}
+        engine = config.get('engine', 'auto')
+        templates = config.get('templates', [])
+
+        if not isinstance(templates, list) or not templates:
+            return jsonify({'error': '請提供欲產生的模板清單'}), 400
+
         os.environ['SPEC_SYNC_ENGINE'] = engine
-        
-        # Send start event
+
         socketio.emit('generate_start', {
             'timestamp': datetime.now().isoformat(),
             'templates': templates
         })
-        
-        # Execute generation using existing script
+
         results = []
-        script_path = project_root / 'scripts' / 'generate_docs.py'
-        
+        processed_success = set()
+        token_mode_available = True
+        token_success_count = 0
+
+        # 嘗試 Token 模式
         try:
-            # Call the existing script
-            result = subprocess.run(
-                [sys.executable, str(script_path)],
-                cwd=str(project_root),
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-            
-            if result.returncode == 0:
-                # Success - find generated files in output directory
-                for template in templates:
-                    output_file = f"filled_{template}"
-                    if (OUTPUT_DIR / output_file).exists():
-                        results.append({
-                            'template': template,
-                            'status': 'success',
-                            'output': output_file
-                        })
-                        socketio.emit('generate_progress', {
-                            'template': template,
-                            'status': 'success',
-                            'output': output_file
-                        })
+            ssot = _load_ssot()
+        except Exception as e:
+            # 無法載入 SSOT 時，無法執行 Token 替換
+            token_mode_available = False
+            ssot = None
+
+        if token_mode_available:
+            for template in templates:
+                t_path = TEMPLATES_DIR / template
+                if not t_path.exists():
+                    results.append({
+                        'template': template,
+                        'status': 'error',
+                        'error': '模板不存在'
+                    })
+                    continue
+
+                ext = t_path.suffix.lower()
+                try:
+                    if ext == '.docx':
+                        tokens = _scan_tokens_docx(t_path)
+                    elif ext == '.xlsx':
+                        tokens = _scan_tokens_xlsx(t_path)
                     else:
                         results.append({
                             'template': template,
                             'status': 'error',
-                            'error': 'Output file not found'
+                            'error': '不支援的檔案類型'
                         })
-            else:
-                # Error occurred
-                error_msg = result.stderr or result.stdout
+                        continue
+
+                    if tokens:
+                        out_name = f"filled_{template}"
+                        out_path = OUTPUT_DIR / out_name
+                        if ext == '.docx':
+                            info = _replace_tokens_docx(t_path, out_path, ssot)
+                        else:
+                            info = _replace_tokens_xlsx(t_path, out_path, ssot)
+
+                        token_success_count += 1
+                        processed_success.add(template)
+                        payload = {
+                            'template': template,
+                            'status': 'success',
+                            'output': out_name,
+                            'tokens_found': len(tokens),
+                            'missing': info.get('missing', []),
+                            'replaced_count': len(info.get('replaced', {}))
+                        }
+                        results.append(payload)
+                        socketio.emit('generate_progress', payload)
+                    else:
+                        payload = {
+                            'template': template,
+                            'status': 'skipped',
+                            'reason': '未找到 Token'
+                        }
+                        results.append(payload)
+                        socketio.emit('generate_progress', payload)
+
+                except ImportError as ie:
+                    token_mode_available = False
+                    break
+                except Exception as e:
+                    results.append({
+                        'template': template,
+                        'status': 'error',
+                        'error': str(e)
+                    })
+
+        # 若 Token 模式不可用或沒有任何成功，回退舊版腳本
+        if (not token_mode_available) or token_success_count == 0:
+            script_path = project_root / 'scripts' / 'generate_docs.py'
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script_path)],
+                    cwd=str(project_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+
+                if result.returncode == 0:
+                    for template in templates:
+                        if template in processed_success:
+                            continue  # 已由 Token 模式產出
+                        output_file = f"filled_{template}"
+                        if (OUTPUT_DIR / output_file).exists():
+                            payload = {
+                                'template': template,
+                                'status': 'success',
+                                'output': output_file
+                            }
+                            results.append(payload)
+                            socketio.emit('generate_progress', payload)
+                        else:
+                            results.append({
+                                'template': template,
+                                'status': 'error',
+                                'error': 'Output file not found'
+                            })
+                else:
+                    error_msg = result.stderr or result.stdout
+                    for template in templates:
+                        if template in processed_success:
+                            continue
+                        payload = {
+                            'template': template,
+                            'status': 'error',
+                            'error': error_msg
+                        }
+                        results.append(payload)
+                        socketio.emit('generate_progress', payload)
+
+            except subprocess.TimeoutExpired:
+                error_msg = 'Generation timeout (5 minutes)'
                 for template in templates:
+                    if template in processed_success:
+                        continue
                     results.append({
                         'template': template,
                         'status': 'error',
                         'error': error_msg
                     })
-                    socketio.emit('generate_progress', {
-                        'template': template,
-                        'status': 'error',
-                        'error': error_msg
-                    })
-        
-        except subprocess.TimeoutExpired:
-            error_msg = 'Generation timeout (5 minutes)'
-            for template in templates:
-                results.append({
-                    'template': template,
-                    'status': 'error',
-                    'error': error_msg
-                })
-        
-        # Send complete event
+
         socketio.emit('generate_complete', {
             'timestamp': datetime.now().isoformat(),
             'results': results
         })
-        
+
         return jsonify({
             'success': True,
             'results': results
         })
-        
+
     except Exception as e:
         logger.error(f"Generate failed: {str(e)}")
         socketio.emit('generate_error', {
